@@ -9,10 +9,10 @@ class ConvEncoder(nn.Module):
             nn.MaxPool2d(2, stride=2),  # b, 32, 32, 32
             nn.Conv2d(32, 16, 3, padding=1),  # b, 16, 32, 32
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=1),  # b, 16, 16, 16
+            nn.MaxPool2d(2, stride=2),  # b, 16, 16, 16
             nn.Conv2d(16, 8, 3, padding=1),  # b, 8, 16, 16
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=1),  # b, 8, 8, 8
+            nn.MaxPool2d(2, stride=2),  # b, 8, 8, 8
             nn.Flatten()
         )
 
@@ -25,17 +25,31 @@ class ConvDecoder(nn.Module):
         super().__init__()
         self.decoder = nn.Sequential(
             nn.Unflatten(1, (8, 8, 8)), #b, 8, 8, 8
-            nn.ConvTranspose2d(8, 16, 3, padding=1),  # b, 16, x, x
+            nn.ConvTranspose2d(8, 16, 3, stride=2),  # b, 16, 8, 8
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 32, 3, padding=1),  # b, 32, x, x
+            nn.ConvTranspose2d(16, 32, 3, stride=2, padding=1),  # b, 32, x, x
             nn.ReLU(True),
-            nn.ConvTranspose2d(32, 3, 3),  # b, 3, x, x
+            nn.ConvTranspose2d(32, 3, 3, stride=2, padding=1),  # b, 3, x, x
+            CropLayer(),
             nn.Tanh()
         )
 
     def forward(self, inputs):
         outputs = self.decoder(inputs)
         return outputs
+
+class PrintLayer(nn.Module):
+    def __init__(self, prefix):
+        super().__init__()
+        self.prefix = prefix
+
+    def forward(self, inputs):
+        print(self.prefix, inputs.shape)
+        return inputs
+
+class CropLayer(nn.Module):
+    def forward(self, inputs):
+        return inputs[:, :, :64, :64]
 
 class ConvED(nn.Module):
     def __init__(self):
