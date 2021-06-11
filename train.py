@@ -16,8 +16,6 @@ BATCH_SIZE = 8 * NB_GPUS
 start_date = datetime.datetime.now().strftime("%B%d_%H-%M-%S")
 
 dataset = TileDataset(cfg)
-a = dataset.__getitem__(0)
-print(a[0].shape, a[1].shape)
 
 data_loader = torch.utils.data.DataLoader(
     dataset,
@@ -46,8 +44,8 @@ for epoch in range(cfg.max_epoch):
     with tqdm(total=(len(dataset) - len(dataset) % BATCH_SIZE)) as _tqdm:
         _tqdm.set_description('epoch: {}/{}'.format(epoch + 1, cfg.max_epoch))
         for tiles, target in data_loader:
-            tiles.to(device)
-            inputs = tiles.flatten(start_dim=0, end_dim=1)
+            tiles = tiles.to(device)
+            inputs = tiles.flatten(start_dim=0, end_dim=2)
             preds = model(inputs)
 
             loss = log_cosh(preds, inputs)
