@@ -4,7 +4,7 @@ from torch import nn
 
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
-    def __init__(self, d_model, dropout, max_len=100):
+    def __init__(self, d_model, dropout, max_len=100, phase_shift=0):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         
@@ -13,8 +13,8 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(0., max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0., d_model, 2) *
                              -(math.log(1000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        pe[:, 0::2] = torch.sin(phase_shift + position * div_term)
+        pe[:, 1::2] = torch.cos(phase_shift + position * div_term)
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
@@ -28,9 +28,10 @@ class PositionalEncoding2D(nn.Module):
     def __init__(self, d_model, dropout, max_len=100):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
-        orig_pe = PositionalEncoding(d_model, 0, max_len=max_len).state_dict()['pe']
-        horiz_pe = orig_pe.repeat(max_len, 1) 
-        vert_pe = pe.unsqueeze(1).repeat(max_len)
+        vert_pe = PositionalEncoding(d_model, 0, max_len=max_len, phase_shift=math.pi/2).state_dict()['pe']
+        vert_pe = vert_pe.unsqueeze(1).repeat(max_len)
+        horiz_pe = PositionalEncoding(d_model, 0, max_len=max_len).state_dict()['pe']
+        horiz_pe = horiz_pe.repeat(max_len, 1) 
         pe = horiz_pe + vert_pe
         
         self.register_buffer('pe', pe)
