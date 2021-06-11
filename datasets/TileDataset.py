@@ -9,7 +9,7 @@ from torchvision import transforms
 from PIL import Image
 from pycocotools.coco import COCO
 
-from utils.positionalEncoding import PositionalEncoding
+from modules.positionalEncoding import PositionalEncoding
 
 class TileDataset(Dataset):
     def __init__(self, cfg, transform=None):

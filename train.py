@@ -1,5 +1,5 @@
 import os
-import tqdm
+from tqdm import tqdm
 import datetime
 import configs.test as cfg
 from modules.losses import LogCoshLoss
