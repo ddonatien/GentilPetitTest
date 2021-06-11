@@ -1,27 +1,27 @@
 import os
-from tqdm import tqdm
 import datetime
-import configs.test as cfg
-from modules.losses import LogCoshLoss
-from modules.encoderDecoder import ConvED
-from datasets.TileDataset import TileDataset
-from utils.metering import AverageMeter
 import torch
 from torch import nn
 from torch import optim
 from torchvision import transforms
+from tqdm import tqdm
+import configs.test as cfg
+from modules.losses import LogCoshLoss
+from modules.encoder_decoder import ConvED
+from datasets.tile_dataset import TileDataset
+from utils.metering import AverageMeter
 
-nb_gpus = 2
+NB_GPUS = 2
+BATCH_SIZE = 8 * NB_GPUS
 start_date = datetime.datetime.now().strftime("%B%d_%H-%M-%S")
 
 dataset = TileDataset(cfg)
 a = dataset.__getitem__(0)
 print(a[0].shape, a[1].shape)
 
-batch_size = 8 * nb_gpus
 data_loader = torch.utils.data.DataLoader(
     dataset,
-    batch_size=batch_size,
+    batch_size=BATCH_SIZE,
     shuffle=False,
     num_workers=8,
     pin_memory=True
@@ -43,7 +43,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-5)
 for epoch in range(cfg.max_epoch):
     epoch_losses = AverageMeter()
     model.train()
-    with tqdm(total=(len(dataset) - len(dataset) % batch_size)) as _tqdm:
+    with tqdm(total=(len(dataset) - len(dataset) % BATCH_SIZE)) as _tqdm:
         _tqdm.set_description('epoch: {}/{}'.format(epoch + 1, cfg.max_epoch))
         for tiles, target in data_loader:
             tiles.to(device)
