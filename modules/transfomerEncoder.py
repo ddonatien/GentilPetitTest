@@ -1,32 +1,27 @@
 import math
+import copy
 import torch
 import torch.nn.functional as F
 from torch import nn
 import numpy as np
 
-class EncoderDecoder(nn.Module):
+class EncoderStack(nn.Module):
     """
     A standard Encoder-Decoder architecture. Base for this and many 
     other models.
     """
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
-        super(EncoderDecoder, self).__init__()
+    def __init__(self, encoder, src_embed, generator):
+        super(EncoderStack, self).__init__()
         self.encoder = encoder
-        self.decoder = decoder
         self.src_embed = src_embed
-        self.tgt_embed = tgt_embed
         self.generator = generator
         
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    def forward(self, src):
         "Take in and process masked src and target sequences."
-        return self.decode(self.encode(src, src_mask), src_mask,
-                            tgt, tgt_mask)
+        return self.encode(src)
     
-    def encode(self, src, src_mask):
-        return self.encoder(self.src_embed(src), src_mask)
-    
-    def decode(self, memory, src_mask, tgt, tgt_mask):
-        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+    def encode(self, src):
+        return self.encoder(self.src_embed(src))
 
 class Generator(nn.Module):
     "Define standard linear + softmax generation step."
@@ -41,7 +36,6 @@ def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
-
 ## Encoder code
 
 class Encoder(nn.Module):
@@ -51,10 +45,11 @@ class Encoder(nn.Module):
         self.layers = clones(layer, N)
         self.norm = LayerNorm(layer.size)
         
-    def forward(self, x, mask):
+    def forward(self, x):
         "Pass the input (and mask) through each layer in turn."
+        x = x.unsqueeze(0) # Only for bs = 1
         for layer in self.layers:
-            x = layer(x, mask)
+            x = layer(x)
         return self.norm(x)
 
 class LayerNorm(nn.Module):
@@ -68,7 +63,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
-        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+        return self.a_2.to(x.device) * (x - mean) / (std + self.eps) + self.b_2.to(x.device) # TODO Find a more elegant way to do that
 
 class SublayerConnection(nn.Module):
     """
@@ -93,43 +88,10 @@ class EncoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout), 2)
         self.size = size
 
-    def forward(self, x, mask):
+    def forward(self, x):
         "Follow Figure 1 (left) for connections."
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x))
         return self.sublayer[1](x, self.feed_forward)
-
-
-## Decoder code
-
-class Decoder(nn.Module):
-    "Generic N layer decoder with masking."
-    def __init__(self, layer, N):
-        super(Decoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-        
-    def forward(self, x, memory, src_mask, tgt_mask):
-        for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
-        return self.norm(x)
-
-class DecoderLayer(nn.Module):
-    "Decoder is made of self-attn, src-attn, and feed forward (defined below)"
-    def __init__(self, size, self_attn, src_attn, feed_forward, dropout):
-        super(DecoderLayer, self).__init__()
-        self.size = size
-        self.self_attn = self_attn
-        self.src_attn = src_attn
-        self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 3)
- 
-    def forward(self, x, memory, src_mask, tgt_mask):
-        "Follow Figure 1 (right) for connections."
-        m = memory
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
-        return self.sublayer[2](x, self.feed_forward)
-
 
 def subsequent_mask(size):
     "Mask out subsequent positions."
@@ -170,7 +132,7 @@ class MultiHeadedAttention(nn.Module):
         
         # 1) Do all the linear projections in batch from d_model => h x d_k 
         query, key, value = \
-            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+            [l.to(x.device)(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2) # TODO Cleaner use of CUDA
              for l, x in zip(self.linears, (query, key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
@@ -180,7 +142,7 @@ class MultiHeadedAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
-        return self.linears[-1](x)
+        return self.linears.to(x.device)[-1](x) # TODO Cleaner use of CUDA
 
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
@@ -191,4 +153,14 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+        return self.w_2.to(x.device)(self.dropout(F.relu(self.w_1.to(x.device)(x)))) # TODO Cleaner use of CUDA
+
+class Generator(nn.Module):
+    "Define standard linear + softmax generation step."
+    def __init__(self, d_model, vocab):
+        super(Generator, self).__init__()
+        self.proj = nn.Linear(d_model, vocab)
+        self.conv = nn.Conv1d(252, 1, 1)
+
+    def forward(self, x):
+        return F.log_softmax(self.conv.to(x.device)(self.proj.to(x.device)(x)), dim=-1).squeeze(1)
