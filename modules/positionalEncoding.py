@@ -29,14 +29,13 @@ class PositionalEncoding2D(nn.Module):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         vert_pe = PositionalEncoding(d_model, 0, max_len=max_len, phase_shift=math.pi/2).state_dict()['pe']
-        vert_pe = vert_pe.unsqueeze(1).repeat(max_len)
+        vert_pe = vert_pe[0].unsqueeze(1).repeat(1, max_len, 1)
         horiz_pe = PositionalEncoding(d_model, 0, max_len=max_len).state_dict()['pe']
-        horiz_pe = horiz_pe.repeat(max_len, 1) 
+        horiz_pe = horiz_pe.repeat(max_len, 1, 1) 
         pe = horiz_pe + vert_pe
         
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + torch.Tensor(self.pe[:, :, :x.size(1)], 
-                            requires_grad=False)
+        x = x + torch.tensor(self.pe[:x.size(1), :x.size(2), :], requires_grad=False, device=x.device)
         return self.dropout(x)
