@@ -63,7 +63,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
-        return self.a_2.to(x.device) * (x - mean) / (std + self.eps) + self.b_2.to(x.device) # TODO Find a more elegant way to do that
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
 class SublayerConnection(nn.Module):
     """
@@ -132,7 +132,7 @@ class MultiHeadedAttention(nn.Module):
         
         # 1) Do all the linear projections in batch from d_model => h x d_k 
         query, key, value = \
-            [l.to(x.device)(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2) # TODO Cleaner use of CUDA
+            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
              for l, x in zip(self.linears, (query, key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
@@ -142,7 +142,7 @@ class MultiHeadedAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
-        return self.linears.to(x.device)[-1](x) # TODO Cleaner use of CUDA
+        return self.linears[-1](x)
 
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
@@ -153,7 +153,7 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        return self.w_2.to(x.device)(self.dropout(F.relu(self.w_1.to(x.device)(x)))) # TODO Cleaner use of CUDA
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
 class Generator(nn.Module):
     "Define standard linear + softmax generation step."
@@ -163,4 +163,4 @@ class Generator(nn.Module):
         self.conv = nn.Conv1d(252, 1, 1)
 
     def forward(self, x):
-        return F.log_softmax(self.conv.to(x.device)(self.proj.to(x.device)(x)), dim=-1).squeeze(1)
+        return F.log_softmax(self.conv(self.proj(x)), dim=-1).squeeze(1)
