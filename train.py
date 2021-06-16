@@ -6,21 +6,21 @@ import time
 from torch import nn
 from torch import optim
 from torch.utils.data.dataloader import default_collate
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from tqdm import tqdm
 import configs.test as cfg
 from modules.losses import LogCoshLoss
 from modules.encoder_decoder import ConvED
-from modules.transfomerEncoder import EncoderStack,\
+from modules.encoderStack import EncoderStack,\
                                       PositionwiseFeedForward, MultiHeadedAttention,\
-                                      Encoder, EncoderLayer, Generator
+                                      Encoder, EncoderLayer, Generator, MatrixApply
 from modules.positionalEncoding import PositionalEncoding2D
 from datasets.tile_dataset import TileDataset
 from utils.metering import AverageMeter
 
-NB_GPUS = 2
-# BATCH_SIZE = 1 * NB_GPUS
-BATCH_SIZE = 1
+NB_GPUS = torch.cuda.device_count()
+BATCH_SIZE = 32 * NB_GPUS
 TRAIN_ED = False
 MODEL_FILE = '/mnt/disk1/project/GentilPetitTest/ConvED_June15_12-21-05_final.pth'
 
@@ -33,7 +33,7 @@ def make_model(featureEncoder, featureDecoder, N=6,
     position = PositionalEncoding2D(d_model, dropout)
     model = EncoderStack(
         Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
-        nn.Sequential(nn.Flatten(0, 2), featureEncoder, nn.Unflatten(0, [BATCH_SIZE, 12, 21]), c(position), nn.Flatten(0, 2)), #Dimensions should not be hard-coded
+        nn.Sequential(MatrixApply(featureEncoder), c(position), nn.Flatten(1, 2)), #Dimensions should not be hard-coded
         nn.Sequential(Generator(d_model, 512), featureDecoder))
     
     # This was important from their code. 
@@ -43,7 +43,7 @@ def make_model(featureEncoder, featureDecoder, N=6,
             nn.init.xavier_uniform(p)
     return model
 
-def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch):
+def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_meter, writer, scheduler):
     "Standard Training and Logging Function"
     start = time.time()
     total_tokens = 0
@@ -53,17 +53,22 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch):
         data[0] = data[0].to(device)
         data[1] = data[1].to(device)
         out = model.forward(data[0])
-        loss = loss_compute(model.generator(out), data[1])
+        loss = loss_compute(model.module.generator(out), data[1])
+        loss_meter.update(loss.item(), data[0].shape[0])
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        scheduler.step()
         total_loss += loss
         total_tokens += data[0].shape[0]
         tokens += data[0].shape[0]
-        if i % 50 == 1:
+        if i % 10 == 1:
             elapsed = time.time() - start
             print("Epoch %d Step: %d Loss: %f Tokens per Sec: %f" %
                     (epoch, i, loss / data[0].shape[0], tokens / elapsed))
+            writer.add_scalar('training loss',
+                              epoch_losses.avg,
+                              epoch * len(data_iter) + i)
             start = time.time()
             tokens = 0
     return total_loss / total_tokens
@@ -80,7 +85,7 @@ data_loader = torch.utils.data.DataLoader(
     pin_memory=True
 )
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 log_cosh = LogCoshLoss()
 
@@ -124,12 +129,23 @@ else:
     featuresED = featuresED.to(device)
     featuresED.eval()
     model = make_model(featuresED.encoder, featuresED.decoder, N=1)
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     model.train()
+    writer = SummaryWriter()
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
     for epoch in range(cfg.max_epoch):
         epoch_losses = AverageMeter()
-        run_epoch(data_loader, model, log_cosh, optimizer, device, epoch)
+        lt = run_epoch(data_loader, model, log_cosh, optimizer, device, epoch, epoch_losses, writer, scheduler)
+        writer.add_scalar('training_loss/total_tokens',
+                            lt,
+                            (epoch + 1) * len(data_loader))
+        if epoch % 100 == 1:
+            torch.save(model.module.state_dict(), os.path.join('./', 'encoderStack_{}_epoch{}.pth'.format(start_date, epoch)))
+    torch.save(model.module.state_dict(), os.path.join('./', 'encoderStack_{}_final.pth'.format(start_date)))
 
 # inv_normalize = transforms.Normalize(
 #    mean=[-0.4914/0.2023, -0.4822/0.1994, -0.4465/0.2010],
