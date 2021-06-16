@@ -18,9 +18,6 @@ class EncoderStack(nn.Module):
         
     def forward(self, src):
         "Take in and process masked src and target sequences."
-        return self.encode(src)
-    
-    def encode(self, src):
         return self.encoder(self.src_embed(src))
 
 class Generator(nn.Module):
@@ -47,7 +44,7 @@ class Encoder(nn.Module):
         
     def forward(self, x):
         "Pass the input (and mask) through each layer in turn."
-        x = x.unsqueeze(0) # Only for bs = 1
+        # x = x.unsqueeze(0) # Only for bs = 1
         for layer in self.layers:
             x = layer(x)
         return self.norm(x)
@@ -164,3 +161,12 @@ class Generator(nn.Module):
 
     def forward(self, x):
         return F.log_softmax(self.conv(self.proj(x)), dim=-1).squeeze(1)
+
+class MatrixApply(nn.Module):
+    def __init__(self, layer):
+        super(MatrixApply, self).__init__()
+        self.layer = layer
+
+    def forward(self, x):
+        out = self.layer(torch.flatten(x, 0, 2))
+        return torch.reshape(out, (x.shape[0], x.shape[1], x.shape[2], out.shape[-1]))
