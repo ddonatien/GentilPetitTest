@@ -130,3 +130,9 @@ dmypy.json
 
 # VSCode
 .vscode/
+
+# Model files
+*.pth
+
+# Tensorboard
+runs/
