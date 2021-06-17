@@ -11,7 +11,7 @@ from torchvision import transforms
 from tqdm import tqdm
 import configs.test as cfg
 from modules.losses import LogCoshLoss
-from modules.encoder_decoder import ConvED
+from modules.convED import ConvED
 from modules.encoderStack import EncoderStack,\
                                       PositionwiseFeedForward, MultiHeadedAttention,\
                                       Encoder, EncoderLayer, Generator, MatrixApply
