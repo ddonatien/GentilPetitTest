@@ -10,9 +10,10 @@ class EncoderStack(nn.Module):
     A standard Encoder-Decoder architecture. Base for this and many 
     other models.
     """
-    def __init__(self, encoder, src_embed, generator):
+    def __init__(self, encoder, src_embed, generator, d_model):
         super(EncoderStack, self).__init__()
         self.encoder = encoder
+        self.d_model = d_model
         self.src_embed = src_embed
         self.generator = generator
         
