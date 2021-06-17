@@ -12,7 +12,7 @@ from pycocotools.coco import COCO
 from modules.positionalEncoding import PositionalEncoding
 
 class TileDataset(Dataset):
-    def __init__(self, cfg, transform=None):
+    def __init__(self, cfg, transform=None, load_to_ram=False):
         super().__init__()
         self.cfg = cfg
         self.coco = COCO(self.cfg.ann_file)
@@ -21,6 +21,12 @@ class TileDataset(Dataset):
         self.ids = list(sorted(self.coco.imgs.keys()))
         self.transform = transform
         self.pe = PositionalEncoding
+        self.loaded = False
+        if load_to_ram:
+            # TODO Allow multiple workers ?
+            self.images_db = {}
+            self._load_all_images()
+            self.loaded = True
 
     def __len__(self):
         return len(self.ids)
@@ -29,10 +35,17 @@ class TileDataset(Dataset):
         path = self.coco.loadImgs(id)[0]["file_name"]
         return Image.open(os.path.join(self.root, path)).convert("RGB")
 
+    def _load_all_images(self):
+        for id in self.ids:
+            self.images_db[id] = self._load_image(id)
+
     def __getitem__(self, idx):
         ## Load image
         id = self.ids[idx]
-        image = self._load_image(id)
+        if self.loaded:
+            image = self.images_db[id]
+        else:
+            image = self._load_image(id)
         width, height = image.size
         horiz_pad, vert_pad = int((self.cfg.tile_size - width % self.cfg.tile_size) / 2),\
                               int((self.cfg.tile_size - height % self.cfg.tile_size) / 2)
