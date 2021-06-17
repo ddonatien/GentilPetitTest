@@ -4,7 +4,7 @@ import datetime
 import torch
 import time
 from torch import nn
-from torch import optim
+from torch.optim import Optimizer
 from torch.utils.data.dataloader import default_collate
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
@@ -21,6 +21,7 @@ from utils.metering import AverageMeter
 
 NB_GPUS = torch.cuda.device_count()
 BATCH_SIZE = 32 * NB_GPUS
+NUM_WORKERS = 8 * NB_GPUS
 TRAIN_ED = False
 MODEL_FILE = '/mnt/disk1/project/GentilPetitTest/ConvED_June15_12-21-05_final.pth'
 
@@ -34,7 +35,7 @@ def make_model(featureEncoder, featureDecoder, N=6,
     model = EncoderStack(
         Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
         nn.Sequential(MatrixApply(featureEncoder), c(position), nn.Flatten(1, 2)), #Dimensions should not be hard-coded
-        nn.Sequential(Generator(d_model, 512), featureDecoder))
+        nn.Sequential(Generator(d_model, 512), featureDecoder), d_model)
     
     # This was important from their code. 
     # Initialize parameters with Glorot / fan_avg.
@@ -58,11 +59,12 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_met
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        scheduler.step()
+        if scheduler:
+            scheduler.step()
         total_loss += loss
         total_tokens += data[0].shape[0]
         tokens += data[0].shape[0]
-        if i % 10 == 1:
+        if i % 5 == 1:
             elapsed = time.time() - start
             print("Epoch %d Step: %d Loss: %f Tokens per Sec: %f" %
                     (epoch, i, loss / data[0].shape[0], tokens / elapsed))
@@ -73,6 +75,38 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_met
             tokens = 0
     return total_loss / total_tokens
 
+class NoamOpt(Optimizer):
+    "Optim wrapper that implements rate."
+    def __init__(self, params, model_size, factor, warmup, optimizer):
+        super(NoamOpt, self).__init__(params, optimizer.defaults)
+        self.optimizer = optimizer
+        self._step = 0
+        self.warmup = warmup
+        self.factor = factor
+        self.model_size = model_size
+        self._rate = 0
+
+    def step(self):
+        "Update parameters and rate"
+        self._step += 1
+        rate = self.rate()
+        for p in self.optimizer.param_groups:
+            p['lr'] = rate
+        self._rate = rate
+        self.optimizer.step()
+
+    def rate(self, step = None):
+        "Implement `lrate` above"
+        if step is None:
+            step = self._step
+        return self.factor * \
+            (self.model_size ** (-0.5) *
+            min(step ** (-0.5), step * self.warmup ** (-1.5)))
+
+def get_std_opt(model):
+    return NoamOpt(model.parameters(), model.module.d_model, 2, 4000,
+            torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+
 start_date = datetime.datetime.now().strftime("%B%d_%H-%M-%S")
 
 dataset = TileDataset(cfg)
@@ -81,7 +115,7 @@ data_loader = torch.utils.data.DataLoader(
     dataset,
     batch_size=BATCH_SIZE,
     shuffle=False,
-    num_workers=8,
+    num_workers=NUM_WORKERS,
     pin_memory=True
 )
 
@@ -96,8 +130,8 @@ if TRAIN_ED:
         featuresED = nn.DataParallel(featuresED)
     featuresED.to(device)
 
-    optimizer = optim.Adam(featuresED.parameters(), lr=1e-3)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=90, gamma=0.1)
+    optimizer = torch.optim.Adam(featuresED.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=90, gamma=0.1)
 
     ## Train autoencoder
     for epoch in range(cfg.max_epoch):
@@ -128,18 +162,19 @@ else:
     featuresED.load_state_dict(torch.load(MODEL_FILE))
     featuresED = featuresED.to(device)
     featuresED.eval()
-    model = make_model(featuresED.encoder, featuresED.decoder, N=1)
+    model = make_model(featuresED.encoder, featuresED.decoder, N=2)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = get_std_opt(model)
     model.train()
     writer = SummaryWriter()
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
     for epoch in range(cfg.max_epoch):
         epoch_losses = AverageMeter()
-        lt = run_epoch(data_loader, model, log_cosh, optimizer, device, epoch, epoch_losses, writer, scheduler)
+        lt = run_epoch(data_loader, model, log_cosh, optimizer, device, epoch, epoch_losses, writer, None)
         writer.add_scalar('training_loss/total_tokens',
                             lt,
                             (epoch + 1) * len(data_loader))
