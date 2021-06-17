@@ -20,10 +20,13 @@ from datasets.tile_dataset import TileDataset
 from utils.metering import AverageMeter
 
 NB_GPUS = torch.cuda.device_count()
-BATCH_SIZE = 32 * NB_GPUS
-NUM_WORKERS = 8 * NB_GPUS
-TRAIN_ED = False
-MODEL_FILE = '/mnt/disk1/project/GentilPetitTest/ConvED_June15_12-21-05_final.pth'
+if cfg.nb_gpus >= 0:
+    NB_GPUS = cfg.nb_gpus
+BATCH_SIZE = cfg.batch_size
+N = cfg.N
+NUM_WORKERS = cfg.num_workers
+TRAIN_ED = cfg.train_ed
+CONV_ED_FILE = cfg.conv_ed_file
 
 def make_model(featureEncoder, featureDecoder, N=6, 
                d_model=512, d_ff=2048, h=8, dropout=0.1):
@@ -163,11 +166,11 @@ if TRAIN_ED:
     torch.save(featuresED.module.state_dict(), os.path.join('./', 'ConvED_{}_final.pth'.format(start_date)))
 
 else:
-    featuresED.load_state_dict(torch.load(MODEL_FILE))
+    featuresED.load_state_dict(torch.load(CONV_ED_FILE))
     featuresED = featuresED.to(device)
     featuresED.eval()
     writer = SummaryWriter()
-    model = make_model(featuresED.encoder, featuresED.decoder, N=2)
+    model = make_model(featuresED.encoder, featuresED.decoder, N=N)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
