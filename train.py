@@ -64,7 +64,7 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_met
         total_loss += loss
         total_tokens += data[0].shape[0]
         tokens += data[0].shape[0]
-        if i % 5 == 1:
+        if i % 2 == 1:
             elapsed = time.time() - start
             print("Epoch %d Step: %d Loss: %f Tokens per Sec: %f" %
                     (epoch, i, loss / data[0].shape[0], tokens / elapsed))
@@ -77,7 +77,7 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_met
 
 class NoamOpt(Optimizer):
     "Optim wrapper that implements rate."
-    def __init__(self, params, model_size, factor, warmup, optimizer):
+    def __init__(self, params, model_size, factor, warmup, optimizer, writer):
         super(NoamOpt, self).__init__(params, optimizer.defaults)
         self.optimizer = optimizer
         self._step = 0
@@ -93,6 +93,9 @@ class NoamOpt(Optimizer):
         for p in self.optimizer.param_groups:
             p['lr'] = rate
         self._rate = rate
+        writer.add_scalar('lr',
+                          self._rate,
+                          self._step)
         self.optimizer.step()
 
     def rate(self, step = None):
@@ -103,18 +106,19 @@ class NoamOpt(Optimizer):
             (self.model_size ** (-0.5) *
             min(step ** (-0.5), step * self.warmup ** (-1.5)))
 
-def get_std_opt(model):
+def get_std_opt(model, writer):
     return NoamOpt(model.parameters(), model.module.d_model, 2, 4000,
-            torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+            torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9),
+            writer)
 
 start_date = datetime.datetime.now().strftime("%B%d_%H-%M-%S")
 
-dataset = TileDataset(cfg)
+dataset = TileDataset(cfg, load_to_ram=True)
 
 data_loader = torch.utils.data.DataLoader(
     dataset,
     batch_size=BATCH_SIZE,
-    shuffle=False,
+    shuffle=True,
     num_workers=NUM_WORKERS,
     pin_memory=True
 )
@@ -162,15 +166,15 @@ else:
     featuresED.load_state_dict(torch.load(MODEL_FILE))
     featuresED = featuresED.to(device)
     featuresED.eval()
+    writer = SummaryWriter()
     model = make_model(featuresED.encoder, featuresED.decoder, N=2)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
     model.to(device)
     # optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    optimizer = get_std_opt(model)
+    optimizer = get_std_opt(model, writer)
     model.train()
-    writer = SummaryWriter()
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.1)
     for epoch in range(cfg.max_epoch):
         epoch_losses = AverageMeter()
