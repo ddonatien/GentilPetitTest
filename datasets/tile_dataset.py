@@ -10,6 +10,7 @@ from PIL import Image
 from pycocotools.coco import COCO
 
 from modules.positionalEncoding import PositionalEncoding
+from utils.imageTools import to_tiles
 
 class TileDataset(Dataset):
     def __init__(self, cfg, transform=None, load_to_ram=False):
@@ -63,15 +64,7 @@ class TileDataset(Dataset):
         image = t(image)
 
         ## Separate image in n tile_size sized tiles
-        img_np = image.numpy()
-        tiles = []
-        for i in range(0, img_np.shape[1], self.cfg.tile_size):
-            line_tiles = []
-            for j in range(0, img_np.shape[2], self.cfg.tile_size):
-                tile = img_np[:, i:i+self.cfg.tile_size, j:j+self.cfg.tile_size].copy()
-                line_tiles.append(tile)
-            tiles.append(np.array(line_tiles))
-        tiles = np.array(tiles)
+        tiles = to_tiles(image)
         # print(len(tiles))
         # img = Image.fromarray(tiles[225], 'RGB')
         # img.show()
