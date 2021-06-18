@@ -64,7 +64,7 @@ class TileDataset(Dataset):
         image = t(image)
 
         ## Separate image in n tile_size sized tiles
-        tiles = to_tiles(image, self.cfg.tile_size)
+        tiles = to_tiles(image.numpy(), self.cfg.tile_size)
 
         ## Single out random target
         target_idx = (randrange(tiles.shape[0]), randrange(tiles.shape[1]))

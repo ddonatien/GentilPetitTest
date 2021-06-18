@@ -3,7 +3,7 @@ import numpy as np
 import configs.test as cfg
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
-from modules.encoder_decoder import ConvED
+from modules.convED import ConvED
 from datasets.tile_dataset import TileDataset
 from modules.losses import LogCoshLoss
 

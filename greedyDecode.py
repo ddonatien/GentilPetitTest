@@ -1,6 +1,5 @@
 import sys
 import torch
-from pydbg import dbg
 import numpy as np
 import configs.test as cfg
 from PIL import Image
