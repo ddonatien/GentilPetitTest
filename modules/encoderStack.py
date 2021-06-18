@@ -2,8 +2,9 @@ import math
 import copy
 import torch
 import torch.nn.functional as F
-from torch import nn
 import numpy as np
+from torch import nn
+from modules.positionalEncoding import PositionalEncoding2D
 
 class EncoderStack(nn.Module):
     """
@@ -171,3 +172,22 @@ class MatrixApply(nn.Module):
     def forward(self, x):
         out = self.layer(torch.flatten(x, 0, 2))
         return torch.reshape(out, (x.shape[0], x.shape[1], x.shape[2], out.shape[-1]))
+
+def make_model(featureEncoder, featureDecoder, N=6, 
+               d_model=512, d_ff=2048, h=8, dropout=0.1):
+    "Helper: Construct a model from hyperparameters."
+    c = copy.deepcopy
+    attn = MultiHeadedAttention(h, d_model)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    position = PositionalEncoding2D(d_model, dropout)
+    model = EncoderStack(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        nn.Sequential(MatrixApply(featureEncoder), c(position), nn.Flatten(1, 2)), #Dimensions should not be hard-coded
+        nn.Sequential(Generator(d_model, 512), featureDecoder), d_model)
+
+    # This was important from their code. 
+    # Initialize parameters with Glorot / fan_avg.
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform(p)
+    return model
