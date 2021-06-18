@@ -40,6 +40,6 @@ with torch.no_grad():
     pred = model.decoder(model.encoder(tiles))
     print(pred.shape)
     print(f"loss = {log_cosh(pred, tiles)}")
-    show(make_grid(pred, padding=100))
+    show(make_grid(pred, padding=2))
     # plt.imshow(pred[0].cpu().permute(1, 2, 0))
     plt.show()
