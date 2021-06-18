@@ -10,7 +10,7 @@ from PIL import Image
 from pycocotools.coco import COCO
 
 from modules.positionalEncoding import PositionalEncoding
-from utils.imageTools import to_tiles
+from utils.imageTools import to_tiles, pad
 
 class TileDataset(Dataset):
     def __init__(self, cfg, transform=None, load_to_ram=False):
@@ -50,7 +50,7 @@ class TileDataset(Dataset):
         width, height = image.size
         horiz_pad, vert_pad = int((self.cfg.tile_size - width % self.cfg.tile_size) / 2),\
                               int((self.cfg.tile_size - height % self.cfg.tile_size) / 2)
-        image = self._pad(image, horiz_pad, vert_pad)
+        image = pad(image, horiz_pad, vert_pad)
         # image.show()
 
         t = self.transform
@@ -64,14 +64,7 @@ class TileDataset(Dataset):
         image = t(image)
 
         ## Separate image in n tile_size sized tiles
-        tiles = to_tiles(image)
-        # print(len(tiles))
-        # img = Image.fromarray(tiles[225], 'RGB')
-        # img.show()
-        # print(img_np.shape)
-        # print(type(img_np))
-
-        ## Do positional encoding
+        tiles = to_tiles(image, self.cfg.tile_size)
 
         ## Single out random target
         target_idx = (randrange(tiles.shape[0]), randrange(tiles.shape[1]))
@@ -80,11 +73,3 @@ class TileDataset(Dataset):
         tiles[target_idx] = np.zeros((3, self.cfg.tile_size, self.cfg.tile_size))
 
         return (torch.from_numpy(tiles), torch.from_numpy(target))
-
-    def _pad(self, pil_img, horiz, vert):
-        width, height = pil_img.size
-        new_width = width + 2 * horiz
-        new_height = height + 2 * vert
-        result = Image.new(pil_img.mode, (new_width, new_height), (0, 0, 0))
-        result.paste(pil_img, (horiz, vert))
-        return result
