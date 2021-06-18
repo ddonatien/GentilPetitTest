@@ -1,5 +1,4 @@
 import os
-import copy
 import datetime
 import torch
 import time
@@ -12,10 +11,7 @@ from tqdm import tqdm
 import configs.test as cfg
 from modules.losses import LogCoshLoss
 from modules.convED import ConvED
-from modules.encoderStack import EncoderStack,\
-                                      PositionwiseFeedForward, MultiHeadedAttention,\
-                                      Encoder, EncoderLayer, Generator, MatrixApply
-from modules.positionalEncoding import PositionalEncoding2D
+from modules.encoderStack import  make_model
 from datasets.tile_dataset import TileDataset
 from utils.metering import AverageMeter
 
@@ -27,25 +23,6 @@ N = cfg.N
 NUM_WORKERS = cfg.num_workers
 TRAIN_ED = cfg.train_ed
 CONV_ED_FILE = cfg.conv_ed_file
-
-def make_model(featureEncoder, featureDecoder, N=6, 
-               d_model=512, d_ff=2048, h=8, dropout=0.1):
-    "Helper: Construct a model from hyperparameters."
-    c = copy.deepcopy
-    attn = MultiHeadedAttention(h, d_model)
-    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    position = PositionalEncoding2D(d_model, dropout)
-    model = EncoderStack(
-        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
-        nn.Sequential(MatrixApply(featureEncoder), c(position), nn.Flatten(1, 2)), #Dimensions should not be hard-coded
-        nn.Sequential(Generator(d_model, 512), featureDecoder), d_model)
-    
-    # This was important from their code. 
-    # Initialize parameters with Glorot / fan_avg.
-    for p in model.parameters():
-        if p.dim() > 1:
-            nn.init.xavier_uniform(p)
-    return model
 
 def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_meter, writer, scheduler):
     "Standard Training and Logging Function"
