@@ -7,8 +7,6 @@ from modules.convED import ConvED
 from datasets.tile_dataset import TileDataset
 from modules.losses import LogCoshLoss
 
-MODEL_FILE = '/mnt/disk1/project/GentilPetitTest/ConvED_June15_12-21-05_final.pth'
-
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 dataset = TileDataset(cfg)
@@ -22,8 +20,7 @@ dataset = TileDataset(cfg)
 # )
 
 model = ConvED()
-model.load_state_dict(torch.load(MODEL_FILE))
-print(model.encoder)
+model.load_state_dict(torch.load(cfg.conv_ed_file))
 model = model.to(device)
 model.eval()
 
@@ -32,6 +29,7 @@ log_cosh = LogCoshLoss()
 def show(img):
     npimg = img.cpu().numpy()
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
+    plt.show()
 
 with torch.no_grad():
     tiles = dataset[0][0].flatten(start_dim=0, end_dim=1)
@@ -42,4 +40,3 @@ with torch.no_grad():
     print(f"loss = {log_cosh(pred, tiles)}")
     show(make_grid(pred, padding=2))
     # plt.imshow(pred[0].cpu().permute(1, 2, 0))
-    plt.show()

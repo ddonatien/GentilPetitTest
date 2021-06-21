@@ -3,6 +3,7 @@ import datetime
 import torch
 import time
 from torch import nn
+from torch.nn.modules import module
 from torch.optim import Optimizer
 from torch.utils.data.dataloader import default_collate
 from torch.utils.tensorboard import SummaryWriter
@@ -143,11 +144,13 @@ if TRAIN_ED:
     torch.save(featuresED.module.state_dict(), os.path.join('./', 'ConvED_{}_final.pth'.format(start_date)))
 
 else:
-    featuresED.load_state_dict(torch.load(CONV_ED_FILE))
+    # featuresED.load_state_dict(torch.load(CONV_ED_FILE))
     featuresED = featuresED.to(device)
     featuresED.eval()
     writer = SummaryWriter()
     model = make_model(featuresED.encoder, featuresED.decoder, N=N)
+    featuresED.load_state_dict(torch.load(CONV_ED_FILE))
+    featuresED.requires_grad_(requires_grad=False)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)

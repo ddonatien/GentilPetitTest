@@ -7,8 +7,11 @@ from utils.imageTools import mask_tile, to_tiles, to_untiled, show_image, pad
 from modules.convED import ConvED
 from modules.encoderStack import  make_model
 from torchvision import transforms
+from torchvision.utils import make_grid
+import matplotlib.pyplot as plt
 
 ENCODER_STACK_FILE = "/mnt/disk1/project/GentilPetitTest/encoderStack_June17_12-34-37_final.pth"
+ENCODER_STACK_FILE = "/mnt/disk1/project/GentilPetitTest/encoderStack_June18_16-07-20_final.pth"
 IMAGE_FILE = "/mnt/disk1/datasets/EPP/rgb018_Color.png"
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -20,6 +23,11 @@ model = make_model(featuresED.encoder, featuresED.decoder, N=cfg.N)
 model.load_state_dict(torch.load(ENCODER_STACK_FILE))
 model.to(device)
 model.eval()
+
+featuresED.load_state_dict(torch.load(cfg.conv_ed_file))
+
+# for p in model.parameters():
+#     print(p)
 
 t = transforms.Compose([
     transforms.ToTensor(),
@@ -51,26 +59,37 @@ tiles = torch.tensor(to_tiles(image.numpy(), cfg.tile_size))
 show_image(inv_t(to_untiled(tiles)))
 
 generated_tiles = []
-generated_tiles2 = []
 with torch.no_grad():
     for i in range(0, tiles.shape[0]):
         generated_line = []
         generated_line2 = []
         for j in range(0, tiles.shape[1]):
             masked_array, masked_tile = mask_tile(tiles.numpy(), (i, j))
-            pred1 = model(torch.tensor(masked_array).unsqueeze(0).to(device))
-            gen = model.generator(pred1)
-            pred2 = featuresED(torch.tensor(masked_tile).unsqueeze(0).to(device))
+            pred = model(torch.tensor(masked_array).unsqueeze(0).to(device))
+            gen = model.generator(pred)
             generated_line.append(np.transpose(np.array(inv_t(gen[0])), (2, 0, 1)))
-            generated_line2.append(np.transpose(np.array(inv_t(pred2[0])), (2, 0, 1)))
         generated_tiles.append(np.array(generated_line))
-        generated_tiles2.append(np.array(generated_line2))
 
 generated_image = to_untiled(np.array(generated_tiles))
-generated_image2 = to_untiled(np.array(generated_tiles2))
 
 show_image(generated_image)
-show_image(generated_image2)
+
+# model = ConvED()
+# model.load_state_dict(torch.load(cfg.conv_ed_file))
+model = featuresED
+# model.load_state_dict(torch.load(cfg.conv_ed_file))
+model = model.to(device)
+model.eval()
+
+def show(img):
+    npimg = img.cpu().numpy()
+    plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
+    plt.show()
+
+with torch.no_grad():
+
+    pred = model.decoder(model.encoder(tiles.flatten(0, 1).to(device)))
+    show(make_grid(pred, padding=2))
 
 # dbg(untiled.shape)
 # 
