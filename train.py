@@ -1,3 +1,4 @@
+from modules.vanillaVAE import VanillaVAE
 import os
 import datetime
 import torch
@@ -108,31 +109,29 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 log_cosh = LogCoshLoss()
 
-featuresED = ConvED()
 if TRAIN_ED:
+    vae_model = VanillaVAE(3, 256)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
-        featuresED = nn.DataParallel(featuresED)
-    featuresED.to(device)
+        vae_model = nn.DataParallel(vae_model)
+    vae_model.to(device)
 
-    optimizer = torch.optim.Adam(featuresED.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=90, gamma=0.1)
+    optimizer = torch.optim.Adam(vae_model.parameters(), lr=0.005)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
-    ## Train autoencoder
     for epoch in range(cfg.max_epoch):
         epoch_losses = AverageMeter()
-        featuresED.train()
-        # with tqdm(total=(len(dataset) - len(dataset) % BATCH_SIZE)) as _tqdm:
+        vae_model.train()
         with tqdm(total=32760) as _tqdm:
             _tqdm.set_description('epoch: {}/{}'.format(epoch + 1, cfg.max_epoch))
             for tiles, target in data_loader:
                 tiles = tiles.to(device)
                 inputs = tiles.flatten(start_dim=0, end_dim=2)
-                preds = featuresED(inputs)
+                preds = vae_model(inputs)
 
-                loss = log_cosh(preds, inputs)
+                loss = vae_model.module.loss_function(*preds, M_N = 0.005)['loss']
 
-                epoch_losses.update(loss, len (tiles))
+                epoch_losses.update(loss, len(tiles))
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -141,7 +140,41 @@ if TRAIN_ED:
                 _tqdm.set_postfix(loss='{:.6f}'.format(epoch_losses.avg))
                 _tqdm.update(len(inputs))
 
-    torch.save(featuresED.module.state_dict(), os.path.join('./', 'ConvED_{}_final.pth'.format(start_date)))
+    torch.save(vae_model.module.state_dict(), os.path.join('./', 'VAE_{}_final.pth'.format(start_date)))
+    
+    # featuresED = ConvED()
+    # if torch.cuda.device_count() > 1:
+    #     print("Let's use", torch.cuda.device_count(), "GPUs!")
+    #     featuresED = nn.DataParallel(featuresED)
+    # featuresED.to(device)
+
+    # optimizer = torch.optim.Adam(featuresED.parameters(), lr=1e-3)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=90, gamma=0.1)
+
+    # ## Train autoencoder
+    # for epoch in range(cfg.max_epoch):
+    #     epoch_losses = AverageMeter()
+    #     featuresED.train()
+    #     # with tqdm(total=(len(dataset) - len(dataset) % BATCH_SIZE)) as _tqdm:
+    #     with tqdm(total=32760) as _tqdm:
+    #         _tqdm.set_description('epoch: {}/{}'.format(epoch + 1, cfg.max_epoch))
+    #         for tiles, target in data_loader:
+    #             tiles = tiles.to(device)
+    #             inputs = tiles.flatten(start_dim=0, end_dim=2)
+    #             preds = featuresED(inputs)
+
+    #             loss = log_cosh(preds, inputs)
+
+    #             epoch_losses.update(loss, len (tiles))
+
+    #             optimizer.zero_grad()
+    #             loss.backward()
+    #             optimizer.step()
+    #             scheduler.step()
+    #             _tqdm.set_postfix(loss='{:.6f}'.format(epoch_losses.avg))
+    #             _tqdm.update(len(inputs))
+
+    # torch.save(featuresED.module.state_dict(), os.path.join('./', 'ConvED_{}_final.pth'.format(start_date)))
 
 else:
     # featuresED.load_state_dict(torch.load(CONV_ED_FILE))

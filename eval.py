@@ -4,6 +4,7 @@ import configs.test as cfg
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 from modules.convED import ConvED
+from modules.vanillaVAE import VanillaVAE
 from datasets.tile_dataset import TileDataset
 from modules.losses import LogCoshLoss
 
@@ -19,7 +20,9 @@ dataset = TileDataset(cfg)
 #     pin_memory=True
 # )
 
-model = ConvED()
+model = VanillaVAE(3, 256)
+
+# model = ConvED()
 model.load_state_dict(torch.load(cfg.conv_ed_file))
 model = model.to(device)
 model.eval()
@@ -35,8 +38,10 @@ with torch.no_grad():
     tiles = dataset[0][0].flatten(start_dim=0, end_dim=1)
     tiles = tiles.to(device)
     print(tiles.shape)
-    pred = model.decoder(model.encoder(tiles))
+    preds = model(tiles)
+    pred = preds[0]
     print(pred.shape)
-    print(f"loss = {log_cosh(pred, tiles)}")
+    loss = model.loss_function(*preds, M_N = 0.005)['loss'].mean()
+    print(f"loss = {loss}")
     show(make_grid(pred, padding=2))
     # plt.imshow(pred[0].cpu().permute(1, 2, 0))
