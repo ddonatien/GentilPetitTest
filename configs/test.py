@@ -9,5 +9,5 @@ batch_size = 16
 N = 3
 num_workers = 16
 train_ed = True
-# conv_ed_file = '/mnt/disk1/project/GentilPetitTest/ConvED_June15_12-21-05_final.pth'
-conv_ed_file = '/mnt/disk1/project/GentilPetitTest/VAE_June21_19-40-43_final.pth'
+conv_ed_file = '/mnt/disk1/project/GentilPetitTest/ConvED_June22_20-21-15_final.pth'
+# conv_ed_file = '/mnt/disk1/project/GentilPetitTest/VAE_June21_19-40-43_final.pth'

@@ -20,9 +20,9 @@ dataset = TileDataset(cfg)
 #     pin_memory=True
 # )
 
-model = VanillaVAE(3, 256)
+# model = VanillaVAE(3, 256)
 
-# model = ConvED()
+model = ConvED()
 model.load_state_dict(torch.load(cfg.conv_ed_file))
 model = model.to(device)
 model.eval()
@@ -39,9 +39,11 @@ with torch.no_grad():
     tiles = tiles.to(device)
     print(tiles.shape)
     preds = model(tiles)
-    pred = preds[0]
+    # pred = preds[0]
+    pred = preds
     print(pred.shape)
-    loss = model.loss_function(*preds, M_N = 0.005)['loss'].mean()
+    # loss = model.loss_function(*preds, M_N = 0.005)['loss'].mean()
+    loss= log_cosh(pred, tiles)
     print(f"loss = {loss}")
     show(make_grid(pred, padding=2))
     # plt.imshow(pred[0].cpu().permute(1, 2, 0))
