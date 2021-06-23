@@ -12,7 +12,7 @@ from torchvision import transforms
 from tqdm import tqdm
 import configs.test as cfg
 from modules.losses import LogCoshLoss
-from modules.convED import ConvED
+from modules.convED import ConvED, LeakyConvED, SkippyConvED
 from modules.encoderStack import  make_model
 from datasets.tile_dataset import TileDataset
 from utils.metering import AverageMeter
@@ -46,7 +46,7 @@ def run_epoch(data_iter, model, loss_compute, optimizer, device, epoch, loss_met
         total_loss += loss
         total_tokens += data[0].shape[0]
         tokens += data[0].shape[0]
-        if i % 2 == 1:
+        if i % 10 == 1:
             elapsed = time.time() - start
             print("Epoch %d Step: %d Loss: %f Tokens per Sec: %f" %
                     (epoch, i, loss / data[0].shape[0], tokens / elapsed))
@@ -89,7 +89,7 @@ class NoamOpt(Optimizer):
             min(step ** (-0.5), step * self.warmup ** (-1.5)))
 
 def get_std_opt(model, writer):
-    return NoamOpt(model.parameters(), model.module.d_model, 2, 4000,
+    return NoamOpt(model.parameters(), model.module.d_model, 2, 3800,
             torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9),
             writer)
 
@@ -142,7 +142,7 @@ if TRAIN_ED:
 
     # torch.save(vae_model.module.state_dict(), os.path.join('./', 'VAE_{}_final.pth'.format(start_date)))
     
-    featuresED = ConvED()
+    featuresED = LeakyConvED()
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         featuresED = nn.DataParallel(featuresED)
@@ -150,6 +150,8 @@ if TRAIN_ED:
 
     optimizer = torch.optim.Adam(featuresED.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+
+    writer = SummaryWriter()
 
     ## Train autoencoder
     for epoch in range(cfg.max_epoch):
@@ -165,7 +167,7 @@ if TRAIN_ED:
 
                 loss = log_cosh(preds, inputs)
 
-                epoch_losses.update(loss, len (tiles))
+                epoch_losses.update(loss, len(tiles))
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -173,15 +175,19 @@ if TRAIN_ED:
                 scheduler.step()
                 _tqdm.set_postfix(loss='{:.6f}'.format(epoch_losses.avg))
                 _tqdm.update(len(inputs))
+            writer.add_scalar('training loss ED',
+                            epoch_losses.avg,
+                            epoch * 32760)
 
-    torch.save(featuresED.module.state_dict(), os.path.join('./', 'ConvED_{}_final.pth'.format(start_date)))
+    torch.save(featuresED.module.state_dict(), os.path.join('./', 'LeakyConvED_{}_final.pth'.format(start_date)))
 
 else:
+    featuresED = LeakyConvED()
     # featuresED.load_state_dict(torch.load(CONV_ED_FILE))
     featuresED = featuresED.to(device)
     featuresED.eval()
     writer = SummaryWriter()
-    model = make_model(featuresED.encoder, featuresED.decoder, N=N)
+    model = make_model(featuresED.encoder, featuresED.decoder, d_model=1024, N=N)
     featuresED.load_state_dict(torch.load(CONV_ED_FILE))
     featuresED.requires_grad_(requires_grad=False)
     if torch.cuda.device_count() > 1:

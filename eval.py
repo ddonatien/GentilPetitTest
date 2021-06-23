@@ -3,7 +3,7 @@ import numpy as np
 import configs.test as cfg
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
-from modules.convED import ConvED
+from modules.convED import ConvED, LeakyConvED
 from modules.vanillaVAE import VanillaVAE
 from datasets.tile_dataset import TileDataset
 from modules.losses import LogCoshLoss
@@ -22,7 +22,7 @@ dataset = TileDataset(cfg)
 
 # model = VanillaVAE(3, 256)
 
-model = ConvED()
+model = LeakyConvED()
 model.load_state_dict(torch.load(cfg.conv_ed_file))
 model = model.to(device)
 model.eval()
