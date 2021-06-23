@@ -183,7 +183,7 @@ def make_model(featureEncoder, featureDecoder, N=6,
     model = EncoderStack(
         Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
         nn.Sequential(MatrixApply(featureEncoder), c(position), nn.Flatten(1, 2)), #Dimensions should not be hard-coded
-        nn.Sequential(Generator(d_model, 512), featureDecoder), d_model)
+        nn.Sequential(Generator(d_model, d_model), featureDecoder), d_model)
 
     # This was important from their code. 
     # Initialize parameters with Glorot / fan_avg.
